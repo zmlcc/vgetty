@@ -1,0 +1,12 @@
+[package]
+name = "vgetty"
+version = "0.1.0"
+authors = ["zmlcc <zmlcc@outlook.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+vsock = "0.1.4"
+libc = "0.2.68"
+nix = "0.15.0" 
