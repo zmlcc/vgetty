@@ -67,16 +67,16 @@ fn handle_stream(stream: VsockStream) {
                         let mut master = unsafe { File::from_raw_fd(result.master) };
                         io::copy(&mut reader, &mut master);
                         println!("{:?} copy stream to master end ", child);
-                        reader.shutdown(Shutdown::Both);
+                        // reader.shutdown(Shutdown::Both);
                         master.write(b"\n");
                     });
                     thread::spawn(move || {
                         let mut master = unsafe { File::from_raw_fd(result.master) };
                         io::copy(&mut master, &mut writer);
                         println!("{:?} copy master to stream end ", child);
-                        writer.shutdown(Shutdown::Both);
                     });
                     waitpid(child, None);
+                    stream.shutdown(Shutdown::Both);
                     close(stream.as_raw_fd());
                 }
             }
