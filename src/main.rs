@@ -1,7 +1,7 @@
 use libc;
 use nix::pty::forkpty;
 use nix::sys::socket::SockAddr;
-use nix::sys::termios::{tcgetattr, InputFlags, LocalFlags, OutputFlags};
+use nix::sys::termios::{tcgetattr, tcsetattr, InputFlags, LocalFlags, OutputFlags, SetArg};
 use nix::unistd::ForkResult;
 use std::fs::File;
 use std::io;
@@ -11,17 +11,15 @@ use vsock::{VsockListener, VsockStream};
 
 use nix::fcntl::{fcntl, FcntlArg, FdFlag};
 use nix::sys::wait::waitpid;
+use nix::unistd::close;
 use std::io::Write;
 use std::net::Shutdown;
 use std::os::unix::io::AsRawFd;
 use std::os::unix::process::CommandExt;
 use std::process::exit;
 use std::process::Command;
-use nix::unistd::close;
 
 fn main() {
-    println!("Hello, world!");
-
     let vsock_addr = &SockAddr::new_vsock(libc::VMADDR_CID_ANY, 1235);
 
     let listener = VsockListener::bind(vsock_addr).expect("Unable to bind to socket");
@@ -33,7 +31,11 @@ fn main() {
         match connection {
             Ok(stream) => {
                 fcntl(stream.as_raw_fd(), FcntlArg::F_SETFD(FdFlag::FD_CLOEXEC));
-                println!("New connection: {} {}", stream.as_raw_fd(), stream.peer_addr().unwrap());
+                println!(
+                    "New connection: {} {}",
+                    stream.as_raw_fd(),
+                    stream.peer_addr().unwrap()
+                );
                 thread::spawn(move || handle_stream(stream));
             }
             Err(e) => println!("accept error = {:?}", e),
@@ -42,27 +44,27 @@ fn main() {
 }
 
 fn handle_stream(stream: VsockStream) {
-    // prepare termio
-    let mut termio = tcgetattr(0).expect("cannot get tty attr");
-    termio.local_flags.remove(LocalFlags::ECHO);
-    termio.output_flags.insert(OutputFlags::ONLCR);
-    termio.output_flags.insert(OutputFlags::XTABS);
-    termio.input_flags.insert(InputFlags::ICRNL);
-    termio.input_flags.remove(InputFlags::IXOFF);
- 
-    match forkpty(None, &termio) {
+    match forkpty(None, None) {
         Err(e) => println!("forkpty error = {:?}", e),
         Ok(result) => {
             match result.fork_result {
                 ForkResult::Child => {
-                    Command::new("/bin/sh").exec();
+                    // prepare termio
+                    let mut termio = tcgetattr(0).expect("cannot get tty attr");
+                    termio.local_flags.remove(LocalFlags::ECHO);
+                    termio.output_flags.insert(OutputFlags::ONLCR);
+                    termio.output_flags.insert(OutputFlags::XTABS);
+                    termio.input_flags.insert(InputFlags::ICRNL);
+                    termio.input_flags.remove(InputFlags::IXOFF);
+                    tcsetattr(0, SetArg::TCSANOW, &termio);
+
+                    Command::new("/bin/sh").current_dir("/").exec();
                     // exit(0)
                 }
                 ForkResult::Parent { child } => {
                     println!("forkpty OK = {:?}", child);
-                    let mut writer = stream.try_clone().expect("stream clone failed...");
-                    let mut reader = stream.try_clone().expect("stream clone failed...");
-                    // let reader = &mut stream;
+                    let mut writer = stream.try_clone().expect("stream writer clone failed...");
+                    let mut reader = stream.try_clone().expect("stream reader clone failed...");
                     thread::spawn(move || {
                         let mut master = unsafe { File::from_raw_fd(result.master) };
                         io::copy(&mut reader, &mut master);
@@ -82,5 +84,4 @@ fn handle_stream(stream: VsockStream) {
             }
         }
     }
-
 }
