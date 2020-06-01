@@ -51,11 +51,10 @@ fn handle_stream(stream: VsockStream) {
                 ForkResult::Child => {
                     // prepare termio
                     let mut termio = tcgetattr(0).expect("cannot get tty attr");
-                    termio.local_flags.remove(LocalFlags::ECHO);
+                    termio.local_flags.insert(LocalFlags::ECHO);
                     termio.output_flags.insert(OutputFlags::ONLCR);
-                    termio.output_flags.insert(OutputFlags::XTABS);
-                    termio.input_flags.insert(InputFlags::ICRNL);
-                    termio.input_flags.remove(InputFlags::IXOFF);
+                    termio.input_flags.remove(InputFlags::ICRNL);
+                    termio.input_flags.insert(InputFlags::IUTF8);
                     tcsetattr(0, SetArg::TCSANOW, &termio);
 
                     Command::new("/bin/sh").current_dir("/").exec();
