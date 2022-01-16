@@ -18,9 +18,10 @@ use std::os::unix::io::AsRawFd;
 use std::os::unix::process::CommandExt;
 use std::process::exit;
 use std::process::Command;
+use std::io::{stdin, Read};
 
 fn main() {
-    let vsock_addr = &SockAddr::new_vsock(libc::VMADDR_CID_ANY, 1235);
+    let vsock_addr = &SockAddr::new_vsock(libc::VMADDR_CID_ANY, 1236);
 
     let listener = VsockListener::bind(vsock_addr).expect("Unable to bind to socket");
 
@@ -36,11 +37,23 @@ fn main() {
                     stream.as_raw_fd(),
                     stream.peer_addr().unwrap()
                 );
-                thread::spawn(move || handle_stream(stream));
+                thread::spawn(move || handle_stream22(stream));
             }
             Err(e) => println!("accept error = {:?}", e),
         }
     }
+}
+
+fn handle_stream22(stream: VsockStream) {
+    let mut writer = stream.try_clone().expect("stream writer clone failed...");
+    let mut reader = stream.try_clone().expect("stream reader clone failed...");
+    loop {
+        let mut character = [0];
+        while let Ok(_) = reader.read(&mut character) {
+            write!(writer, "CHAR {:?}", character[0] as char);
+        }
+    }
+
 }
 
 fn handle_stream(stream: VsockStream) {
@@ -58,8 +71,14 @@ fn handle_stream(stream: VsockStream) {
                     termio.input_flags.remove(InputFlags::IXOFF);
                     tcsetattr(0, SetArg::TCSANOW, &termio);
 
-                    Command::new("/bin/sh").current_dir("/").exec();
+                    // Command::new("/bin/sh").current_dir("/").exec();
                     // exit(0)
+                    loop {
+                        let mut character = [0];
+                        while let Ok(_) = stdin().read(&mut character) {
+                            println!("CHAR {:?}", character[0] as char);
+                        }
+                    }
                 }
                 ForkResult::Parent { child } => {
                     println!("forkpty OK = {:?}", child);
